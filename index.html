@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI Voice Assistant - Call Simulation</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f2f5;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      transition: background 0.3s, color 0.3s;
+    }
+    .dark-mode { background: #181a1b; color: white; }
+    .chat-container {
+      width: 820px;
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      height: 92vh;
+      position: relative;
+      transition: background 0.3s, color 0.3s;
+    }
+    .dark-mode .chat-container { background: #242526; color: white; }
+    .top-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    h2 { margin: 0; color: #333; }
+    .dark-mode h2 { color: #fff; }
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 12px;
+      flex: 1;
+    }
+
+    /* Main chat area */
+    .main {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    #chatBox {
+      flex: 1;
+      background: #eef3f7;
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 14px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: font-size 0.3s;
+    }
+    .dark-mode #chatBox { background: #3a3b3c; }
+    .large-text { font-size: 20px !important; }
+
+    .bubble {
+      max-width: 72%;
+      padding: 10px;
+      border-radius: 10px;
+      word-wrap: break-word;
+      position: relative;
+    }
+    .bubble.other { background: #d1e7dd; align-self: flex-start; }
+    .bubble.user  { background: #cfe2ff; align-self: flex-end; }
+    .bubble.local { background: #fff3cd; align-self: flex-end; } /* local typed voice */
+    .meta { font-size: 11px; color: gray; margin-top: 6px; display:block; }
+
+    /* right panel (remote controls) */
+    .right-panel {
+      display:flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .panel {
+      background: rgba(255,255,255,0.9);
+      border-radius: 10px;
+      padding: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .controls { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+    .controls select, .controls input[type="range"] { padding:6px; }
+    button { cursor:pointer; }
+    .btn { padding:8px 12px; border-radius:8px; border:none; background:#007bff; color:white; }
+    .btn.secondary { background:#6c757d; }
+    .btn.green { background:#28a745; }
+    .btn.warn { background:#ffc107; color:#111; }
+    .btn.small { padding:6px 8px; font-size:13px; }
+
+    /* status dots for global and remote */
+    .status-dots { display:flex; gap:8px; align-items:center; }
+    .dot { width:13px; height:13px; border-radius:50%; display:none; box-shadow:0 0 6px rgba(0,0,0,0.25); }
+    .dot.red   { background:red; }
+    .dot.green { background:green; }
+    .dot.blue  { background:blue; }
+    .status-label { font-size:12px; color:gray; }
+
+    /* quick replies */
+    .quick-replies { display:flex; gap:6px; flex-wrap:wrap; }
+
+    /* bottom input group */
+    .chat-input { display:flex; gap:6px; margin-top:8px; }
+    .chat-input input { flex:1; padding:10px; border-radius:8px; border:1px solid #ccc; }
+    .chat-input button { padding:10px 12px; border-radius:8px; border:none; background:#007bff; color:white; }
+
+    /* indicators inside remote panel */
+    .remote-indicators { display:flex; gap:6px; align-items:center; font-size:12px; color:gray; }
+    .remote-dot { width:10px; height:10px; border-radius:50%; display:none; box-shadow:0 0 4px rgba(0,0,0,0.2); }
+
+    /* small text */
+    .muted-text { font-size:12px; color:gray; }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <div class="top-row">
+      <h2>🤖 AI Voice Assistant — Call Simulation</h2>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <label class="muted-text">Accessibility Mode:</label>
+        <select id="profileSelect" style="padding:6px;">
+          <option value="none">None</option>
+          <option value="deaf">Deaf Mode</option>
+          <option value="mute">Mute Mode</option>
+          <option value="vis">Visually Impaired Mode</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="layout">
+      <div class="main">
+        <!-- Status Dots (global) -->
+        <div style="display:flex; justify-content:flex-end; gap:8px; align-items:center;">
+          <div class="status-dots">
+            <div class="dot red" id="globalMuteDot" title="Muted (Red)"></div>
+            <div class="dot green" id="globalListenDot" title="Listening (Green)"></div>
+            <div class="dot blue" id="globalSpeakDot" title="Speaking (Blue)"></div>
+            <span class="status-label" id="statusLabel">Idle</span>
+          </div>
+        </div>
+
+        <div id="chatBox">
+          <!-- messages appear here -->
+          <div class="bubble other">Waiting for speech...<span class="meta">— system</span></div>
+        </div>
+
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <button class="btn green" onclick="startListening()">🎤 Start Listening</button>
+          <button class="btn secondary" onclick="replayLast()">🔊 Replay Last</button>
+          <button class="btn warn" id="muteBtn" onclick="toggleMute()">🔇 Mute</button>
+          <button class="btn small" onclick="toggleDark()">🌙 Dark Mode</button>
+          <button class="btn small" onclick="toggleLargeText()">🔎 Large Text</button>
+          <button class="btn small" onclick="exportChat()">💾 Export Chat</button>
+          <div style="margin-left:auto; display:flex; gap:6px; align-items:center;">
+            <label class="muted-text">Lang</label>
+            <select id="langSelect"></select>
+            <label class="muted-text">Voice</label>
+            <select id="voiceSelect"></select>
+            <label class="muted-text">Speed</label>
+            <input id="speedControl" type="range" min="0.6" max="1.6" step="0.1" value="1" />
+          </div>
+        </div>
+
+        <div class="quick-replies">
+          <button class="btn small" onclick="quickReply('Yes')">Yes ✅</button>
+          <button class="btn small" onclick="quickReply('No')">No ❌</button>
+          <button class="btn small" onclick="quickReply('Please wait')">⏳ Please wait</button>
+          <button class="btn small" onclick="quickReply('Thank you')">🙏 Thank you</button>
+        </div>
+
+        <div class="chat-input" style="margin-top:8px;">
+          <input id="replyText" placeholder="Type reply (will be spoken)..." />
+          <button onclick="speakReply()">Send</button>
+        </div>
+      </div>
+
+      <!-- Right panel: Remote person controls & indicators -->
+      <div class="right-panel">
+        <div class="panel">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong>Remote Person (call partner)</strong>
+            <label style="display:flex; gap:6px; align-items:center;">
+              <input type="checkbox" id="callModeToggle" /> Call Mode
+            </label>
+          </div>
+
+          <div style="margin-top:8px;">
+            <div class="remote-indicators">
+              <div class="remote-dot green" id="remoteListenDot"></div> <span class="muted-text">Listening</span>
+              <div class="remote-dot blue" id="remoteSpeakDot" style="margin-left:6px;"></div> <span class="muted-text">Speaking</span>
+            </div>
+
+            <div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+              <button class="btn green" id="remoteStartBtn" onclick="startRemoteListening()">Start Remote Listening</button>
+              <button class="btn secondary" onclick="stopRemoteListening()">Stop Remote</button>
+            </div>
+
+            <div style="margin-top:10px;">
+              <input id="remoteText" placeholder="Type as remote and Send" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ccc;" />
+              <div style="display:flex; gap:6px; margin-top:6px;">
+                <button class="btn" onclick="sendRemoteTyped()">Send Remote</button>
+                <button class="btn small" onclick="sendRemoteQuick('I am on my way')">Quick: On my way</button>
+                <button class="btn small" onclick="sendRemoteQuick('I cannot speak')">Quick: Can't speak</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <strong>Profile Presets</strong>
+          <div style="margin-top:8px;">
+            <button class="btn small" onclick="applyProfile('deaf')">Deaf Mode</button>
+            <button class="btn small" onclick="applyProfile('mute')">Mute Mode</button>
+            <button class="btn small" onclick="applyProfile('vis')">Visually Impaired</button>
+            <button class="btn small" onclick="applyProfile('none')">Clear</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <strong>Notes</strong>
+          <p class="muted-text" style="margin:6px 0 0 0; font-size:13px;">
+            Call simulation allows testing two-way conversation. Use remote controls to simulate the other person speaking or typing.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Globals and DOM
+    const chatBox = document.getElementById('chatBox');
+    const replyInput = document.getElementById('replyText');
+    const remoteText = document.getElementById('remoteText');
+    const muteBtn = document.getElementById('muteBtn');
+    const globalMuteDot = document.getElementById('globalMuteDot');
+    const globalListenDot = document.getElementById('globalListenDot');
+    const globalSpeakDot = document.getElementById('globalSpeakDot');
+    const statusLabel = document.getElementById('statusLabel');
+
+    const remoteListenDot = document.getElementById('remoteListenDot');
+    const remoteSpeakDot = document.getElementById('remoteSpeakDot');
+    const callModeToggle = document.getElementById('callModeToggle');
+    const remoteStartBtn = document.getElementById('remoteStartBtn');
+
+    const langSelect = document.getElementById('langSelect');
+    const voiceSelect = document.getElementById('voiceSelect');
+    const speedControl = document.getElementById('speedControl');
+    const profileSelect = document.getElementById('profileSelect');
+
+    let lastSentence = "";
+    let isMuted = false;
+    let voices = [];
+    let isRemoteListening = false;
+
+    // Populate supported language options (simple list; browsers vary)
+    const LANGS = [
+      {code:'en-US', name:'English (US)'},
+      {code:'hi-IN', name:'Hindi (India)'},
+      {code:'ta-IN', name:'Tamil (India)'},
+      {code:'es-ES', name:'Spanish (Spain)'}
+    ];
+    LANGS.forEach(l=> {
+      const opt = document.createElement('option');
+      opt.value = l.code; opt.textContent = l.name;
+      langSelect.appendChild(opt);
+    });
+
+    // Load TTS voices
+    function loadVoices(){
+      voices = speechSynthesis.getVoices() || [];
+      voiceSelect.innerHTML = '';
+      voices.forEach((v,i)=>{
+        const o = document.createElement('option');
+        o.value = i; o.textContent = `${v.name} — ${v.lang}`;
+        voiceSelect.appendChild(o);
+      });
+    }
+    speechSynthesis.onvoiceschanged = loadVoices;
+    loadVoices();
+
+    // Utility: add message (sender: "other" or "user")
+    function addMessage(text, sender, whoLabel = '') {
+      const bubble = document.createElement('div');
+      bubble.classList.add('bubble', sender);
+      // content
+      const content = document.createElement('div');
+      content.textContent = text;
+      bubble.appendChild(content);
+      // meta / timestamp
+      const meta = document.createElement('span');
+      meta.className = 'meta';
+      const ts = new Date().toLocaleTimeString();
+      meta.textContent = (whoLabel ? whoLabel + ' • ' : '') + ts;
+      bubble.appendChild(meta);
+      chatBox.appendChild(bubble);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    // Global SpeechRecognition (for local incoming speech)
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition;
+    try {
+      recognition = new Recognition();
+      recognition.continuous = true;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+    } catch (e) {
+      recognition = null;
+      console.warn('SpeechRecognition unavailable in this browser.');
+    }
+
+    if (recognition) {
+      recognition.onresult = (event) => {
+        const text = event.results[event.results.length-1][0].transcript.trim();
+        lastSentence = text;
+        addMessage(text, 'other', 'Caller');
+        if (!isMuted) readAloud(text);
+      };
+      recognition.onstart = () => {
+        globalListenDot.style.display = 'block';
+        statusLabel.textContent = 'Listening';
+      };
+      recognition.onend = () => {
+        globalListenDot.style.display = 'none';
+        statusLabel.textContent = 'Idle';
+      };
+      recognition.onerror = (e) => {
+        console.warn('Recognition error', e);
+      };
+    }
+
+    // Remote-side recognition (simulated partner)
+    let remoteRecognition;
+    try {
+      remoteRecognition = new Recognition();
+      remoteRecognition.continuous = true;
+      remoteRecognition.interimResults = false;
+      remoteRecognition.lang = 'en-US';
+    } catch (e) {
+      remoteRecognition = null;
+    }
+
+    if (remoteRecognition) {
+      remoteRecognition.onresult = (event) => {
+        const text = event.results[event.results.length-1][0].transcript.trim();
+        // remote says something -> appears as 'other' (call partner)
+        addMessage(text, 'other', 'Remote');
+        // when remote speaks, simulate remoteSpeak indicator briefly
+        remoteSpeakDot.style.display = 'block';
+        setTimeout(()=> remoteSpeakDot.style.display='none', 800);
+        // if local not muted, read aloud
+        if (!isMuted) readAloud(text);
+      };
+      remoteRecognition.onstart = () => {
+        isRemoteListening = true;
+        remoteListenDot.style.display = 'block';
+      };
+      remoteRecognition.onend = () => {
+        isRemoteListening = false;
+        remoteListenDot.style.display = 'none';
+      };
+    }
+
+    // Start/Stop listening (local)
+    function startListening(){
+      if (!recognition) { alert('SpeechRecognition not supported'); return; }
+      recognition.lang = langSelect.value || 'en-US';
+      recognition.start();
+      statusLabel.textContent = 'Listening';
+    }
+
+    // Remote controls
+    function startRemoteListening(){
+      if (!remoteRecognition) { alert('SpeechRecognition not supported for remote'); return; }
+      remoteRecognition.lang = langSelect.value || 'en-US';
+      try {
+        remoteRecognition.start();
+        remoteStartBtn.textContent = 'Remote Listening…';
+      } catch(e) {
+        console.warn('Could not start remote recognition (maybe already running).', e);
+      }
+    }
+    function stopRemoteListening(){
+      if (!remoteRecognition) return;
+      try {
+        remoteRecognition.stop();
+        remoteStartBtn.textContent = 'Start Remote Listening';
+      } catch(e) {}
+    }
+
+    // Speak text with TTS
+    function readAloud(text){
+      if (!('speechSynthesis' in window)) return;
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = langSelect.value || 'en-US';
+      u.rate = parseFloat(speedControl.value) || 1;
+      if (voices && voices.length>0) {
+        const idx = parseInt(voiceSelect.value);
+        if (!isNaN(idx) && voices[idx]) u.voice = voices[idx];
+      }
+      // show blue dot when speaking
+      globalSpeakDot.style.display = 'block';
+      statusLabel.textContent = 'Speaking';
+      u.onend = () => {
+        globalSpeakDot.style.display = 'none';
+        statusLabel.textContent = 'Idle';
+      };
+      u.onstart = () => {
+        // also show remoteSpeakDot if message origin is remote? we already toggle where needed
+      };
+      speechSynthesis.speak(u);
+    }
+
+    // send local reply (user)
+    function speakReply(){
+      const text = replyInput.value.trim();
+      if (!text) return;
+      addMessage(text, 'user', 'You');
+      lastSentence = text;
+      if (!isMuted) readAloud(text);
+      replyInput.value = '';
+    }
+
+    function quickReply(msg){
+      replyInput.value = msg;
+      speakReply();
+    }
+
+    // Send typed remote message (simulate partner sending text)
+    function sendRemoteTyped(){
+      const text = remoteText.value.trim();
+      if (!text) return;
+      addMessage(text, 'other', 'Remote');
+      remoteText.value = '';
+      // small speak indicator for remote
+      remoteSpeakDot.style.display = 'block';
+      setTimeout(()=>remoteSpeakDot.style.display='none', 700);
+      // local reads remote message if unmuted
+      if (!isMuted) readAloud(text);
+    }
+
+    function sendRemoteQuick(msg){
+      remoteText.value = msg;
+      sendRemoteTyped();
+    }
+
+    // Replay last sentence
+    function replayLast(){
+      if (lastSentence) readAloud(lastSentence);
+    }
+
+    // Mute toggle
+    function toggleMute(){
+      isMuted = !isMuted;
+      muteBtn.textContent = isMuted ? '🔊 Unmute' : '🔇 Mute';
+      globalMuteDot.style.display = isMuted ? 'block' : 'none';
+      // status label change for clarity
+      statusLabel.textContent = isMuted ? 'Muted' : 'Idle';
+    }
+
+    // Dark mode / large text
+    function toggleDark(){ document.body.classList.toggle('dark-mode'); }
+    function toggleLargeText(){ chatBox.classList.toggle('large-text'); }
+
+    // Export chat
+    function exportChat(){
+      let text = '';
+      chatBox.querySelectorAll('.bubble').forEach(b => {
+        text += b.textContent.replace(/\n/g,' ') + '\n';
+      });
+      const blob = new Blob([text], {type:'text/plain'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'chat_history.txt';
+      a.click();
+    }
+
+    // Profile presets
+    function applyProfile(p){
+      if (p === 'deaf') {
+        isMuted = true;
+        toggleUIForProfile();
+      } else if (p === 'mute') {
+        // allow speech output for typed replies but don't auto-speak incoming
+        isMuted = true;
+        toggleUIForProfile();
+      } else if (p === 'vis') {
+        // auto-speak everything, large text
+        isMuted = false;
+        document.body.classList.add('dark-mode');
+        chatBox.classList.add('large-text');
+        toggleUIForProfile();
+      } else {
+        // clear
+        isMuted = false;
+        document.body.classList.remove('dark-mode');
+        chatBox.classList.remove('large-text');
+        toggleUIForProfile();
+      }
+    }
+    function toggleUIForProfile(){
+      muteBtn.textContent = isMuted ? '🔊 Unmute' : '🔇 Mute';
+      globalMuteDot.style.display = isMuted ? 'block' : 'none';
+      statusLabel.textContent = isMuted ? 'Muted' : 'Idle';
+    }
+
+    // wire profile select
+    profileSelect.addEventListener('change', ()=> applyProfile(profileSelect.value));
+
+    // Initialize voice list periodically (some browsers populate late)
+    setTimeout(loadVoices, 500);
+    setTimeout(loadVoices, 1500);
+
+    // graceful page unload: stop recognition
+    window.addEventListener('beforeunload', ()=>{
+      try { recognition && recognition.stop(); } catch(e){}
+      try { remoteRecognition && remoteRecognition.stop(); } catch(e){}
+    });
+
+    // Call-mode toggle: show/hide remote controls visually (handled by checkbox)
+    callModeToggle.addEventListener('change', () => {
+      const rightPanel = document.querySelector('.right-panel');
+      // when disabled, stop remote listening
+      if (!callModeToggle.checked) {
+        stopRemoteListening();
+        remoteListenDot.style.display = 'none';
+        remoteSpeakDot.style.display = 'none';
+        remoteStartBtn.disabled = true;
+      } else {
+        remoteStartBtn.disabled = false;
+      }
+    });
+    // start with call mode off -> disable remoteStartBtn
+    remoteStartBtn.disabled = true;
+  </script>
+</body>
+</html>
